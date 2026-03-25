@@ -47,7 +47,8 @@ public class LinkPlugin extends Plugin
 		rsnDetector = new RsnDetector(
 			okHttpClient,
 			config,
-			() -> client.getLocalPlayer() != null ? client.getLocalPlayer().getName() : null
+			() -> client.getLocalPlayer() != null ? client.getLocalPlayer().getName() : null,
+			executorService
 		);
 		CommandExecutor commandExecutor = new CommandExecutor(
 			passphrase -> clientThread.invokeLater(() -> partyService.changeParty(passphrase)),

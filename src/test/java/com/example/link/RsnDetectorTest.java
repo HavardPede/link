@@ -51,7 +51,7 @@ public class RsnDetectorTest
 				return suppliedNames.get(supplierCallCount++);
 			}
 			return null;
-		});
+		}, Runnable::run);
 	}
 
 	@Test

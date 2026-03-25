@@ -1,6 +1,7 @@
 package com.example.link;
 
 import java.io.IOException;
+import java.util.concurrent.Executor;
 import java.util.function.Supplier;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.MediaType;
@@ -21,17 +22,19 @@ public class RsnDetector
 	private final OkHttpClient httpClient;
 	private final LinkConfig config;
 	private final Supplier<String> playerNameSupplier;
+	private final Executor executor;
 
 	private int tickCount;
 	private int nextCheckIndex;
 	private boolean pending;
 	private String detectedName;
 
-	public RsnDetector(OkHttpClient httpClient, LinkConfig config, Supplier<String> playerNameSupplier)
+	public RsnDetector(OkHttpClient httpClient, LinkConfig config, Supplier<String> playerNameSupplier, Executor executor)
 	{
 		this.httpClient = httpClient;
 		this.config = config;
 		this.playerNameSupplier = playerNameSupplier;
+		this.executor = executor;
 		this.pending = false;
 		this.nextCheckIndex = 0;
 		this.tickCount = 0;
@@ -68,7 +71,7 @@ public class RsnDetector
 		{
 			detectedName = name;
 			pending = false;
-			postRsn(name);
+			executor.execute(() -> postRsn(name));
 		}
 		else if (nextCheckIndex >= BACKOFF_TICKS.length)
 		{
