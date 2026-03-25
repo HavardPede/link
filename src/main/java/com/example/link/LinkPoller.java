@@ -14,7 +14,7 @@ public class LinkPoller
 {
 	static final int BASE_INTERVAL_SECONDS = 5;
 	static final int MAX_INTERVAL_SECONDS = 60;
-	static final String COMMANDS_URL = "https://osrs-party-finder.vercel.app/api/plugin/commands";
+	static final String COMMANDS_PATH = "/api/plugin/commands";
 	private static final String AUTHORIZATION_HEADER = "Authorization";
 	private static final String BEARER_PREFIX = "Bearer ";
 
@@ -95,7 +95,7 @@ public class LinkPoller
 	String fetchCommands(String token) throws IOException
 	{
 		Request request = new Request.Builder()
-			.url(COMMANDS_URL)
+			.url(config.serverUrl() + COMMANDS_PATH)
 			.header(AUTHORIZATION_HEADER, BEARER_PREFIX + token)
 			.build();
 

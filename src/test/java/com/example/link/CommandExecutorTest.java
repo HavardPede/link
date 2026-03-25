@@ -34,6 +34,8 @@ public class CommandExecutorTest
 		"]}";
 	private static final String TOKEN = "test-bearer-token";
 
+	private static final String FAKE_SERVER_URL = "http://localhost:3000";
+
 	private List<String> changePartyCalls;
 	private boolean shouldThrowOnChangeParty;
 	private AckCapturingHttpClient fakeHttpClient;
@@ -55,7 +57,8 @@ public class CommandExecutorTest
 			changePartyCalls.add(passphrase);
 		};
 
-		executor = new CommandExecutor(spyChangeParty, fakeHttpClient);
+		LinkConfig fakeConfig = new FakeLinkConfig(FAKE_SERVER_URL);
+		executor = new CommandExecutor(spyChangeParty, fakeHttpClient, fakeConfig);
 	}
 
 	@Test
@@ -83,7 +86,7 @@ public class CommandExecutorTest
 
 		assertEquals(1, fakeHttpClient.ackRequests.size());
 		Request ackRequest = fakeHttpClient.ackRequests.get(0);
-		assertEquals(CommandExecutor.ACK_URL_BASE + "cmd-1" + CommandExecutor.ACK_URL_SUFFIX, ackRequest.url().toString());
+		assertEquals(FAKE_SERVER_URL + CommandExecutor.ACK_PATH_PREFIX + "cmd-1" + CommandExecutor.ACK_PATH_SUFFIX, ackRequest.url().toString());
 		assertEquals("Bearer " + TOKEN, ackRequest.header("Authorization"));
 		assertEquals("POST", ackRequest.method());
 	}
@@ -95,7 +98,7 @@ public class CommandExecutorTest
 
 		assertEquals(1, fakeHttpClient.ackRequests.size());
 		Request ackRequest = fakeHttpClient.ackRequests.get(0);
-		assertEquals(CommandExecutor.ACK_URL_BASE + "cmd-2" + CommandExecutor.ACK_URL_SUFFIX, ackRequest.url().toString());
+		assertEquals(FAKE_SERVER_URL + CommandExecutor.ACK_PATH_PREFIX + "cmd-2" + CommandExecutor.ACK_PATH_SUFFIX, ackRequest.url().toString());
 	}
 
 	@Test
@@ -154,9 +157,9 @@ public class CommandExecutorTest
 	{
 		executor.executeCommands(MULTI_JSON, TOKEN);
 
-		assertEquals(CommandExecutor.ACK_URL_BASE + "cmd-1" + CommandExecutor.ACK_URL_SUFFIX,
+		assertEquals(FAKE_SERVER_URL + CommandExecutor.ACK_PATH_PREFIX + "cmd-1" + CommandExecutor.ACK_PATH_SUFFIX,
 			fakeHttpClient.ackRequests.get(0).url().toString());
-		assertEquals(CommandExecutor.ACK_URL_BASE + "cmd-2" + CommandExecutor.ACK_URL_SUFFIX,
+		assertEquals(FAKE_SERVER_URL + CommandExecutor.ACK_PATH_PREFIX + "cmd-2" + CommandExecutor.ACK_PATH_SUFFIX,
 			fakeHttpClient.ackRequests.get(1).url().toString());
 	}
 
@@ -235,6 +238,34 @@ public class CommandExecutorTest
 		public okio.Timeout timeout()
 		{
 			return okio.Timeout.NONE;
+		}
+	}
+
+	static class FakeLinkConfig implements LinkConfig
+	{
+		private final String serverUrl;
+
+		FakeLinkConfig(String serverUrl)
+		{
+			this.serverUrl = serverUrl;
+		}
+
+		@Override
+		public String bearerToken()
+		{
+			return "";
+		}
+
+		@Override
+		public String serverUrl()
+		{
+			return serverUrl;
+		}
+
+		@Override
+		public boolean enabled()
+		{
+			return true;
 		}
 	}
 }

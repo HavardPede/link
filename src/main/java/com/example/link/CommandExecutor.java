@@ -16,8 +16,8 @@ import com.google.gson.JsonParser;
 @Slf4j
 public class CommandExecutor
 {
-	static final String ACK_URL_BASE = "https://osrs-party-finder.vercel.app/api/plugin/commands/";
-	static final String ACK_URL_SUFFIX = "/ack";
+	static final String ACK_PATH_PREFIX = "/api/plugin/commands/";
+	static final String ACK_PATH_SUFFIX = "/ack";
 
 	private static final String AUTHORIZATION_HEADER = "Authorization";
 	private static final String BEARER_PREFIX = "Bearer ";
@@ -28,16 +28,13 @@ public class CommandExecutor
 
 	private final Consumer<String> changeParty;
 	private final OkHttpClient httpClient;
+	private final LinkConfig config;
 
-	/**
-	 * @param changeParty action to join/leave a party. Pass a non-null passphrase to join, null to leave.
-	 *                    Typically wired as: passphrase -> clientThread.invokeLater(() -> partyService.changeParty(passphrase))
-	 * @param httpClient  OkHttp client for ACK requests
-	 */
-	public CommandExecutor(Consumer<String> changeParty, OkHttpClient httpClient)
+	public CommandExecutor(Consumer<String> changeParty, OkHttpClient httpClient, LinkConfig config)
 	{
 		this.changeParty = changeParty;
 		this.httpClient = httpClient;
+		this.config = config;
 	}
 
 	public void executeCommands(String json, String bearerToken)
@@ -105,7 +102,7 @@ public class CommandExecutor
 		try
 		{
 			Request request = new Request.Builder()
-				.url(ACK_URL_BASE + id + ACK_URL_SUFFIX)
+				.url(config.serverUrl() + ACK_PATH_PREFIX + id + ACK_PATH_SUFFIX)
 				.header(AUTHORIZATION_HEADER, BEARER_PREFIX + bearerToken)
 				.post(EMPTY_BODY)
 				.build();

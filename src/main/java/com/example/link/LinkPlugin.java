@@ -44,10 +44,18 @@ public class LinkPlugin extends Plugin
 	{
 		CommandExecutor commandExecutor = new CommandExecutor(
 			passphrase -> clientThread.invokeLater(() -> partyService.changeParty(passphrase)),
-			okHttpClient
+			okHttpClient,
+			config
 		);
 		poller = new LinkPoller(okHttpClient, executorService, config, commandExecutor);
 		log.info("Link plugin started");
+
+		if (client.getGameState() == GameState.LOGGED_IN
+			&& config.enabled()
+			&& !config.bearerToken().isEmpty())
+		{
+			poller.start();
+		}
 	}
 
 	@Override

@@ -41,7 +41,7 @@ public class LinkPollerTest
 		fakeExecutor = new FakeExecutor();
 		fakeConfig = new FakeConfig("test-token", true);
 		fakeHttpClient = new FakeHttpClient();
-		stubCommandExecutor = new CommandExecutor(passphrase -> {}, new OkHttpClient());
+		stubCommandExecutor = new CommandExecutor(passphrase -> {}, new OkHttpClient(), fakeConfig);
 		poller = new LinkPoller(fakeHttpClient, fakeExecutor, fakeConfig, stubCommandExecutor);
 	}
 
@@ -172,6 +172,12 @@ public class LinkPollerTest
 		public String bearerToken()
 		{
 			return token;
+		}
+
+		@Override
+		public String serverUrl()
+		{
+			return "http://localhost:3000";
 		}
 
 		@Override

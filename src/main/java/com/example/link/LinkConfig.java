@@ -29,10 +29,22 @@ public interface LinkConfig extends Config
 	}
 
 	@ConfigItem(
+		keyName = "serverUrl",
+		name = "Server URL",
+		description = "Base URL of the party finder server (e.g. http://localhost:3000 for local dev)",
+		position = 1,
+		section = connectionSection
+	)
+	default String serverUrl()
+	{
+		return "https://osrs-party-finder.vercel.app";
+	}
+
+	@ConfigItem(
 		keyName = "enabled",
 		name = "Enable Link",
 		description = "Enable automatic party sync (polling and command execution)",
-		position = 1,
+		position = 2,
 		section = connectionSection
 	)
 	default boolean enabled()
