@@ -1,121 +1,52 @@
 package com.example.link;
 
-import java.io.IOException;
 import java.util.concurrent.Executor;
 import java.util.function.Supplier;
 import lombok.extern.slf4j.Slf4j;
-import okhttp3.MediaType;
-import okhttp3.OkHttpClient;
-import okhttp3.Request;
-import okhttp3.RequestBody;
-import okhttp3.Response;
 
 @Slf4j
-public class RsnDetector
-{
-	static final String RSN_PATH = "/api/plugin/rsn";
-	static final int[] BACKOFF_TICKS = {1, 2, 4, 8};
-	private static final String AUTHORIZATION_HEADER = "Authorization";
-	private static final String BEARER_PREFIX = "Bearer ";
-	private static final MediaType JSON = MediaType.parse("application/json");
-
-	private final OkHttpClient httpClient;
-	private final LinkConfig config;
+class RsnDetector {
+	private final LinkApiClient apiClient;
 	private final Supplier<String> playerNameSupplier;
 	private final Executor executor;
 
-	private int tickCount;
-	private int nextCheckIndex;
 	private boolean pending;
 	private String detectedName;
 
-	public RsnDetector(OkHttpClient httpClient, LinkConfig config, Supplier<String> playerNameSupplier, Executor executor)
-	{
-		this.httpClient = httpClient;
-		this.config = config;
+	RsnDetector(LinkApiClient apiClient, Supplier<String> playerNameSupplier, Executor executor) {
+		this.apiClient = apiClient;
 		this.playerNameSupplier = playerNameSupplier;
 		this.executor = executor;
-		this.pending = false;
-		this.nextCheckIndex = 0;
-		this.tickCount = 0;
 	}
 
-	/** Called by LinkPlugin when GameStateChanged(LOGGED_IN) fires. */
-	public void onLoggedIn()
-	{
-		tickCount = 0;
-		nextCheckIndex = 0;
+	void onLoggedIn() {
 		pending = true;
-		detectedName = null;
+		tryDetect(true);
 	}
 
-	/** Called by LinkPlugin on every GameTick. */
-	public void onGameTick()
-	{
-		if (!pending || nextCheckIndex >= BACKOFF_TICKS.length)
-		{
+	void onGameTick() {
+		if (!pending) {
 			return;
 		}
-
-		tickCount++;
-
-		if (tickCount < BACKOFF_TICKS[nextCheckIndex])
-		{
-			return;
-		}
-
-		nextCheckIndex++;
-		String name = playerNameSupplier.get();
-
-		if (name != null && !name.isEmpty())
-		{
-			detectedName = name;
-			pending = false;
-			executor.execute(() -> postRsn(name));
-		}
-		else if (nextCheckIndex >= BACKOFF_TICKS.length)
-		{
-			log.warn("Failed to detect RSN after {} tick attempts", BACKOFF_TICKS.length);
-			pending = false;
-		}
+		tryDetect(false);
 	}
 
-	/** Returns the last detected RSN, or null if none detected yet. */
-	public String getDetectedName()
-	{
+	String getDetectedName() {
 		return detectedName;
 	}
 
-	void postRsn(String playerName)
-	{
-		String token = config.bearerToken();
-		if (token == null || token.isEmpty())
-		{
-			log.warn("Cannot post RSN: bearer token is empty");
-			return;
-		}
-
-		String body = "{\"playerName\":\"" + playerName.replace("\"", "\\\"") + "\"}";
-		Request request = new Request.Builder()
-			.url(config.serverUrl() + RSN_PATH)
-			.header(AUTHORIZATION_HEADER, BEARER_PREFIX + token)
-			.post(RequestBody.create(JSON, body))
-			.build();
-
-		try (Response response = httpClient.newCall(request).execute())
-		{
-			if (response.isSuccessful())
-			{
-				log.info("RSN registered: {}", playerName);
+	private void tryDetect(boolean canRetry) {
+		String name = playerNameSupplier.get();
+		if (name != null && !name.isEmpty()) {
+			boolean changed = !name.equals(detectedName);
+			detectedName = name;
+			pending = false;
+			if (changed) {
+				executor.execute(() -> apiClient.postRsn(name));
 			}
-			else
-			{
-				log.warn("RSN registration failed (HTTP {})", response.code());
-			}
-		}
-		catch (IOException e)
-		{
-			log.warn("RSN registration request failed: {}", e.getMessage());
+		} else if (!canRetry) {
+			log.warn("Could not detect RSN after login");
+			pending = false;
 		}
 	}
 }
