@@ -41,7 +41,7 @@ public class LinkPollerTest
 		fakeExecutor = new FakeExecutor();
 		fakeConfig = new FakeConfig("test-token", true);
 		fakeHttpClient = new FakeHttpClient();
-		stubCommandExecutor = new CommandExecutor(passphrase -> {}, new OkHttpClient(), fakeConfig, () -> null);
+		stubCommandExecutor = new CommandExecutor(passphrase -> {}, message -> {}, new OkHttpClient(), fakeConfig, () -> null);
 		RsnDetector stubRsnDetector = new RsnDetector(new OkHttpClient(), fakeConfig, () -> null, Runnable::run);
 		poller = new LinkPoller(fakeHttpClient, fakeExecutor, fakeConfig, stubCommandExecutor, stubRsnDetector);
 	}

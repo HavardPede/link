@@ -28,15 +28,20 @@ public class CommandExecutor
 	private static final MediaType JSON_MEDIA_TYPE = MediaType.parse("application/json");
 	private static final RequestBody EMPTY_BODY = RequestBody.create(JSON_MEDIA_TYPE, "{}");
 
+	private static final String REASON_KICKED = "KICKED";
+	private static final String REASON_CLOSED = "CLOSED";
+
 	private final Consumer<String> changeParty;
+	private final Consumer<String> sendChatMessage;
 	private final OkHttpClient httpClient;
 	private final LinkConfig config;
 	private final Supplier<String> playerNameSupplier;
 
-	public CommandExecutor(Consumer<String> changeParty, OkHttpClient httpClient, LinkConfig config,
-		Supplier<String> playerNameSupplier)
+	public CommandExecutor(Consumer<String> changeParty, Consumer<String> sendChatMessage,
+		OkHttpClient httpClient, LinkConfig config, Supplier<String> playerNameSupplier)
 	{
 		this.changeParty = changeParty;
+		this.sendChatMessage = sendChatMessage;
 		this.httpClient = httpClient;
 		this.config = config;
 		this.playerNameSupplier = playerNameSupplier;
@@ -52,8 +57,9 @@ public class CommandExecutor
 			String id = command.get("id").getAsString();
 			String type = command.get("type").getAsString();
 			String passphrase = extractPassphrase(command);
+			String reason = extractReason(command);
 
-			executeCommand(id, type, passphrase);
+			executeCommand(id, type, passphrase, reason);
 			acknowledgeCommand(id, bearerToken);
 		}
 	}
@@ -77,7 +83,16 @@ public class CommandExecutor
 		return command.get("passphrase").getAsString();
 	}
 
-	private void executeCommand(String id, String type, String passphrase)
+	private String extractReason(JsonObject command)
+	{
+		if (!command.has("reason") || command.get("reason").isJsonNull())
+		{
+			return null;
+		}
+		return command.get("reason").getAsString();
+	}
+
+	private void executeCommand(String id, String type, String passphrase, String reason)
 	{
 		try
 		{
@@ -86,9 +101,18 @@ public class CommandExecutor
 				case JOIN_PARTY:
 					log.info("Executing JOIN_PARTY (command={}, passphrase={})", id, passphrase);
 					changeParty.accept(passphrase);
+					sendChatMessage.accept("You have joined the party.");
 					break;
 				case LEAVE_PARTY:
-					log.info("Executing LEAVE_PARTY (command={})", id);
+					log.info("Executing LEAVE_PARTY (command={}, reason={})", id, reason);
+					if (REASON_KICKED.equals(reason))
+					{
+						sendChatMessage.accept("You have been kicked from the party.");
+					}
+					else if (REASON_CLOSED.equals(reason))
+					{
+						sendChatMessage.accept("The party has been closed by the leader.");
+					}
 					changeParty.accept(null);
 					break;
 				default:

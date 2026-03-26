@@ -6,7 +6,10 @@ import net.runelite.api.Client;
 import net.runelite.api.GameState;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
+import net.runelite.api.ChatMessageType;
 import net.runelite.client.callback.ClientThread;
+import net.runelite.client.chat.ChatMessageManager;
+import net.runelite.client.chat.QueuedMessage;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.party.PartyService;
@@ -36,6 +39,9 @@ public class LinkPlugin extends Plugin
 	private ClientThread clientThread;
 
 	@Inject
+	private ChatMessageManager chatMessageManager;
+
+	@Inject
 	private LinkConfig config;
 
 	private LinkPoller poller;
@@ -52,6 +58,12 @@ public class LinkPlugin extends Plugin
 		);
 		CommandExecutor commandExecutor = new CommandExecutor(
 			passphrase -> clientThread.invokeLater(() -> partyService.changeParty(passphrase)),
+			message -> chatMessageManager.queue(
+				QueuedMessage.builder()
+					.type(ChatMessageType.GAMEMESSAGE)
+					.runeLiteFormattedMessage(message)
+					.build()
+			),
 			okHttpClient,
 			config,
 			() -> rsnDetector != null ? rsnDetector.getDetectedName() : null

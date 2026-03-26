@@ -23,7 +23,13 @@ public class CommandExecutorTest
 	private static final String JOIN_JSON =
 		"{\"commands\":[{\"id\":\"cmd-1\",\"type\":\"JOIN_PARTY\",\"passphrase\":\"test-pass\",\"partyId\":\"p1\",\"createdAt\":\"2026-01-01\"}]}";
 	private static final String LEAVE_JSON =
-		"{\"commands\":[{\"id\":\"cmd-2\",\"type\":\"LEAVE_PARTY\",\"passphrase\":null,\"partyId\":\"p1\",\"createdAt\":\"2026-01-01\"}]}";
+		"{\"commands\":[{\"id\":\"cmd-2\",\"type\":\"LEAVE_PARTY\",\"passphrase\":null,\"reason\":null,\"partyId\":\"p1\",\"createdAt\":\"2026-01-01\"}]}";
+	private static final String LEAVE_KICKED_JSON =
+		"{\"commands\":[{\"id\":\"cmd-2\",\"type\":\"LEAVE_PARTY\",\"passphrase\":null,\"reason\":\"KICKED\",\"partyId\":\"p1\",\"createdAt\":\"2026-01-01\"}]}";
+	private static final String LEAVE_CLOSED_JSON =
+		"{\"commands\":[{\"id\":\"cmd-2\",\"type\":\"LEAVE_PARTY\",\"passphrase\":null,\"reason\":\"CLOSED\",\"partyId\":\"p1\",\"createdAt\":\"2026-01-01\"}]}";
+	private static final String LEAVE_LEFT_JSON =
+		"{\"commands\":[{\"id\":\"cmd-2\",\"type\":\"LEAVE_PARTY\",\"passphrase\":null,\"reason\":\"LEFT\",\"partyId\":\"p1\",\"createdAt\":\"2026-01-01\"}]}";
 	private static final String EMPTY_JSON = "{\"commands\":[]}";
 	private static final String UNKNOWN_TYPE_JSON =
 		"{\"commands\":[{\"id\":\"cmd-3\",\"type\":\"UNKNOWN_CMD\",\"passphrase\":null,\"partyId\":\"p1\",\"createdAt\":\"2026-01-01\"}]}";
@@ -37,6 +43,7 @@ public class CommandExecutorTest
 	private static final String FAKE_SERVER_URL = "http://localhost:3000";
 
 	private List<String> changePartyCalls;
+	private List<String> chatMessageCalls;
 	private boolean shouldThrowOnChangeParty;
 	private AckCapturingHttpClient fakeHttpClient;
 	private CommandExecutor executor;
@@ -45,6 +52,7 @@ public class CommandExecutorTest
 	public void setUp()
 	{
 		changePartyCalls = new ArrayList<>();
+		chatMessageCalls = new ArrayList<>();
 		shouldThrowOnChangeParty = false;
 		fakeHttpClient = new AckCapturingHttpClient();
 
@@ -57,8 +65,10 @@ public class CommandExecutorTest
 			changePartyCalls.add(passphrase);
 		};
 
+		Consumer<String> spyChatMessage = chatMessageCalls::add;
+
 		LinkConfig fakeConfig = new FakeLinkConfig(FAKE_SERVER_URL);
-		executor = new CommandExecutor(spyChangeParty, fakeHttpClient, fakeConfig, () -> null);
+		executor = new CommandExecutor(spyChangeParty, spyChatMessage, fakeHttpClient, fakeConfig, () -> null);
 	}
 
 	@Test
@@ -161,6 +171,49 @@ public class CommandExecutorTest
 			fakeHttpClient.ackRequests.get(0).url().toString());
 		assertEquals(FAKE_SERVER_URL + CommandExecutor.ACK_PATH_PREFIX + "cmd-2" + CommandExecutor.ACK_PATH_SUFFIX,
 			fakeHttpClient.ackRequests.get(1).url().toString());
+	}
+
+	@Test
+	public void joinPartySendsChatMessage()
+	{
+		executor.executeCommands(JOIN_JSON, TOKEN);
+
+		assertEquals(1, chatMessageCalls.size());
+		assertEquals("You have joined the party.", chatMessageCalls.get(0));
+	}
+
+	@Test
+	public void leavePartyKickedSendsChatMessage()
+	{
+		executor.executeCommands(LEAVE_KICKED_JSON, TOKEN);
+
+		assertEquals(1, chatMessageCalls.size());
+		assertEquals("You have been kicked from the party.", chatMessageCalls.get(0));
+	}
+
+	@Test
+	public void leavePartyClosedSendsChatMessage()
+	{
+		executor.executeCommands(LEAVE_CLOSED_JSON, TOKEN);
+
+		assertEquals(1, chatMessageCalls.size());
+		assertEquals("The party has been closed by the leader.", chatMessageCalls.get(0));
+	}
+
+	@Test
+	public void leavePartyLeftSendsNoChatMessage()
+	{
+		executor.executeCommands(LEAVE_LEFT_JSON, TOKEN);
+
+		assertEquals(0, chatMessageCalls.size());
+	}
+
+	@Test
+	public void leavePartyNullReasonSendsNoChatMessage()
+	{
+		executor.executeCommands(LEAVE_JSON, TOKEN);
+
+		assertEquals(0, chatMessageCalls.size());
 	}
 
 	// --- Test doubles ---
