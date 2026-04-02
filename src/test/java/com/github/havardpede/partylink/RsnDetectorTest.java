@@ -119,7 +119,7 @@ public class RsnDetectorTest {
 	}
 
 	@Test
-	public void reloginWithSameNameSkipsPost() {
+	public void reloginWithSameNamePostsAgain() {
 		LinkApiClient apiClient = new LinkApiClient(fakeHttpClient, FAKE_SERVER_URL, () -> token);
 		RsnDetector detector = new RsnDetector(apiClient, () -> "Zezima", Runnable::run);
 
@@ -127,7 +127,7 @@ public class RsnDetectorTest {
 		assertEquals(1, fakeHttpClient.capturedRequests.size());
 
 		detector.onLoggedIn();
-		assertEquals(1, fakeHttpClient.capturedRequests.size());
+		assertEquals(2, fakeHttpClient.capturedRequests.size());
 	}
 
 	@Test

@@ -38,12 +38,9 @@ class RsnDetector {
 	private void tryDetect(boolean canRetry) {
 		String name = playerNameSupplier.get();
 		if (name != null && !name.isEmpty()) {
-			boolean changed = !name.equals(detectedName);
 			detectedName = name;
 			pending = false;
-			if (changed) {
-				executor.execute(() -> apiClient.postRsn(name));
-			}
+			executor.execute(() -> apiClient.postRsn(name));
 		} else if (!canRetry) {
 			log.warn("Could not detect RSN after login");
 			pending = false;
