@@ -3,46 +3,41 @@ package com.github.havardpede.partylink;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 
-import okhttp3.Request;
+import java.util.ArrayList;
+import java.util.List;
 import org.junit.Before;
 import org.junit.Test;
 
 public class RsnDetectorTest {
-	private static final String FAKE_SERVER_URL = "http://localhost:3000";
-	private static final String BEARER_TOKEN = "test-token";
-
-	private FakeHttpClient fakeHttpClient;
-	private String token;
+	private List<String> detectedNames;
 
 	@Before
 	public void setUp() {
-		fakeHttpClient = new FakeHttpClient();
-		token = BEARER_TOKEN;
+		detectedNames = new ArrayList<>();
 	}
 
 	private RsnDetector buildDetector(String nameOnLogin, String nameOnTick) {
-		LinkApiClient apiClient = new LinkApiClient(fakeHttpClient, FAKE_SERVER_URL, () -> token);
 		boolean[] loginCalled = {false};
 		return new RsnDetector(
-				apiClient,
+				detectedNames::add,
 				() -> {
 					if (!loginCalled[0]) {
 						loginCalled[0] = true;
 						return nameOnLogin;
 					}
 					return nameOnTick;
-				},
-				Runnable::run);
+				});
 	}
 
 	@Test
-	public void nameAvailableAtLoginPostsImmediately() {
+	public void nameAvailableAtLoginCallsBackImmediately() {
 		RsnDetector detector = buildDetector("Zezima", null);
 
 		detector.onLoggedIn();
 
 		assertEquals("Zezima", detector.getDetectedName());
-		assertEquals(1, fakeHttpClient.capturedRequests.size());
+		assertEquals(1, detectedNames.size());
+		assertEquals("Zezima", detectedNames.get(0));
 	}
 
 	@Test
@@ -53,7 +48,7 @@ public class RsnDetectorTest {
 		detector.onGameTick();
 
 		assertEquals("Zezima", detector.getDetectedName());
-		assertEquals(1, fakeHttpClient.capturedRequests.size());
+		assertEquals(1, detectedNames.size());
 	}
 
 	@Test
@@ -64,7 +59,7 @@ public class RsnDetectorTest {
 		detector.onGameTick();
 
 		assertNull(detector.getDetectedName());
-		assertEquals(0, fakeHttpClient.capturedRequests.size());
+		assertEquals(0, detectedNames.size());
 	}
 
 	@Test
@@ -72,22 +67,10 @@ public class RsnDetectorTest {
 		RsnDetector detector = buildDetector("Zezima", null);
 
 		detector.onLoggedIn();
-		detector.onGameTick(); // should be no-op since already resolved
+		detector.onGameTick();
 		detector.onGameTick();
 
-		assertEquals(1, fakeHttpClient.capturedRequests.size());
-	}
-
-	@Test
-	public void postRsnSendsCorrectUrlAndAuthHeader() {
-		RsnDetector detector = buildDetector("Zezima", null);
-
-		detector.onLoggedIn();
-
-		Request request = fakeHttpClient.capturedRequests.get(0);
-		assertEquals(FAKE_SERVER_URL + "/api/plugin/rsn", request.url().toString());
-		assertEquals("Bearer " + BEARER_TOKEN, request.header("Authorization"));
-		assertEquals("POST", request.method());
+		assertEquals(1, detectedNames.size());
 	}
 
 	@Test
@@ -98,59 +81,35 @@ public class RsnDetectorTest {
 		detector.onGameTick();
 		assertNull(detector.getDetectedName());
 
-		// Rebuild with a name available — simulates second login
-		LinkApiClient apiClient = new LinkApiClient(fakeHttpClient, FAKE_SERVER_URL, () -> token);
-		detector = new RsnDetector(apiClient, () -> "Retry", Runnable::run);
-		detector.onLoggedIn();
+		RsnDetector detector2 = new RsnDetector(detectedNames::add, () -> "Retry");
+		detector2.onLoggedIn();
 
-		assertEquals("Retry", detector.getDetectedName());
-		assertEquals(1, fakeHttpClient.capturedRequests.size());
+		assertEquals("Retry", detector2.getDetectedName());
+		assertEquals(1, detectedNames.size());
 	}
 
 	@Test
-	public void postRsnSkipsRequestWhenTokenIsEmpty() {
-		token = "";
-		RsnDetector detector = buildDetector("Zezima", null);
+	public void reloginWithSameNameCallsBackAgain() {
+		RsnDetector detector = new RsnDetector(detectedNames::add, () -> "Zezima");
 
 		detector.onLoggedIn();
+		assertEquals(1, detectedNames.size());
 
-		assertEquals("Zezima", detector.getDetectedName());
-		assertEquals(0, fakeHttpClient.capturedRequests.size());
+		detector.onLoggedIn();
+		assertEquals(2, detectedNames.size());
 	}
 
 	@Test
-	public void reloginWithSameNamePostsAgain() {
-		LinkApiClient apiClient = new LinkApiClient(fakeHttpClient, FAKE_SERVER_URL, () -> token);
-		RsnDetector detector = new RsnDetector(apiClient, () -> "Zezima", Runnable::run);
-
-		detector.onLoggedIn();
-		assertEquals(1, fakeHttpClient.capturedRequests.size());
-
-		detector.onLoggedIn();
-		assertEquals(2, fakeHttpClient.capturedRequests.size());
-	}
-
-	@Test
-	public void reloginWithDifferentNamePostsAgain() {
-		LinkApiClient apiClient = new LinkApiClient(fakeHttpClient, FAKE_SERVER_URL, () -> token);
+	public void reloginWithDifferentNameCallsBackAgain() {
 		String[] name = {"Zezima"};
-		RsnDetector detector = new RsnDetector(apiClient, () -> name[0], Runnable::run);
+		RsnDetector detector = new RsnDetector(detectedNames::add, () -> name[0]);
 
 		detector.onLoggedIn();
-		assertEquals(1, fakeHttpClient.capturedRequests.size());
+		assertEquals(1, detectedNames.size());
 
 		name[0] = "Lynx Titan";
 		detector.onLoggedIn();
-		assertEquals(2, fakeHttpClient.capturedRequests.size());
-	}
-
-	@Test(expected = IllegalArgumentException.class)
-	public void invalidServerUrlThrows() {
-		new LinkApiClient(fakeHttpClient, "ftp://evil.com", () -> token);
-	}
-
-	@Test(expected = IllegalArgumentException.class)
-	public void emptyServerUrlThrows() {
-		new LinkApiClient(fakeHttpClient, "", () -> token);
+		assertEquals(2, detectedNames.size());
+		assertEquals("Lynx Titan", detectedNames.get(1));
 	}
 }

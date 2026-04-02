@@ -1,10 +1,7 @@
 package com.github.havardpede.partylink;
 
-import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import java.util.ArrayList;
-import java.util.List;
 
 class Command {
 	final String id;
@@ -19,27 +16,11 @@ class Command {
 		this.reason = reason;
 	}
 
-	static List<Command> listFromJson(String json) {
-		JsonArray array = extractCommandsArray(json);
-		List<Command> commands = new ArrayList<>(array.size());
-		for (int i = 0; i < array.size(); i++) {
-			commands.add(fromJsonObject(array.get(i).getAsJsonObject()));
-		}
-		return commands;
-	}
-
-	private static JsonArray extractCommandsArray(String json) {
-		JsonObject root = new JsonParser().parse(json).getAsJsonObject();
-		if (!root.has("commands")) {
-			return new JsonArray();
-		}
-		return root.getAsJsonArray("commands");
-	}
-
-	private static Command fromJsonObject(JsonObject obj) {
+	static Command fromJson(String json) {
+		JsonObject obj = new JsonParser().parse(json).getAsJsonObject();
 		return new Command(
 				obj.get("id").getAsString(),
-				CommandType.fromString(obj.get("type").getAsString()),
+				CommandType.fromString(obj.get("command").getAsString()),
 				stringOrNull(obj, "passphrase"),
 				LeaveReason.fromString(stringOrNull(obj, "reason")));
 	}

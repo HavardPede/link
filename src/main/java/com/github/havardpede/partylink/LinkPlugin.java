@@ -16,6 +16,7 @@ import net.runelite.client.chat.QueuedMessage;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.events.ConfigChanged;
+import net.runelite.client.events.PartyChanged;
 import net.runelite.client.party.PartyService;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
@@ -38,31 +39,32 @@ public class LinkPlugin extends Plugin {
 	@Inject private ConfigManager configManager;
 	@Inject private LinkConfig config;
 
-	private LinkPoller poller;
+	private WebSocketManager webSocketManager;
 	private RsnDetector rsnDetector;
 
 	@Override
 	protected void startUp() {
-		if (config.serverUrl() == null || config.serverUrl().isEmpty()) {
-			log.warn("Link plugin not started: server URL is not configured");
+		String wsUrl = config.websocketUrl();
+		if (wsUrl == null || wsUrl.isEmpty()) {
+			log.warn("Link plugin not started: WebSocket URL is not configured");
 			return;
 		}
 
-		LinkApiClient apiClient =
-				new LinkApiClient(okHttpClient, config.serverUrl(), this::getStoredToken);
-		rsnDetector = new RsnDetector(apiClient, this::getPlayerName, executorService);
 		CommandExecutor commandExecutor =
-				new CommandExecutor(
-						this::changeParty,
-						this::sendChatMessage,
-						apiClient,
-						rsnDetector::getDetectedName);
-		poller = new LinkPoller(apiClient, executorService, config, commandExecutor, rsnDetector);
+				new CommandExecutor(this::changeParty, this::sendChatMessage);
+		webSocketManager =
+				new WebSocketManager(
+						okHttpClient,
+						wsUrl,
+						this::getStoredToken,
+						commandExecutor,
+						executorService);
+		rsnDetector = new RsnDetector(webSocketManager::sendIdentify, this::getPlayerName);
 		log.info("Link plugin started");
 
 		if (client.getGameState() == GameState.LOGGED_IN) {
-			if (config.enabled() && !getStoredToken().isEmpty()) {
-				poller.start();
+			if (config.enabled() && hasToken()) {
+				webSocketManager.connect();
 			}
 			rsnDetector.onLoggedIn();
 		}
@@ -70,8 +72,8 @@ public class LinkPlugin extends Plugin {
 
 	@Override
 	protected void shutDown() {
-		if (poller != null) {
-			poller.stop();
+		if (webSocketManager != null) {
+			webSocketManager.disconnect();
 		}
 		log.info("Link plugin stopped");
 	}
@@ -80,13 +82,13 @@ public class LinkPlugin extends Plugin {
 	public void onGameStateChanged(GameStateChanged event) {
 		switch (event.getGameState()) {
 			case LOGGED_IN:
-				if (config.enabled() && !getStoredToken().isEmpty()) {
-					poller.start();
+				if (config.enabled() && hasToken()) {
+					webSocketManager.connect();
 				}
 				rsnDetector.onLoggedIn();
 				break;
 			case LOGIN_SCREEN:
-				poller.stop();
+				webSocketManager.disconnect();
 				break;
 		}
 	}
@@ -94,6 +96,19 @@ public class LinkPlugin extends Plugin {
 	@Subscribe
 	public void onGameTick(GameTick event) {
 		rsnDetector.onGameTick();
+	}
+
+	@Subscribe
+	public void onPartyChanged(PartyChanged event) {
+		if (webSocketManager == null) {
+			return;
+		}
+		String passphrase = event.getPassphrase();
+		if (passphrase != null) {
+			webSocketManager.sendPartyState("JOINED", passphrase);
+		} else {
+			webSocketManager.sendPartyState("LEFT", null);
+		}
 	}
 
 	@Subscribe
@@ -105,7 +120,7 @@ public class LinkPlugin extends Plugin {
 			handlePairingKeyChange(event.getNewValue());
 		} else if (LinkConfig.BEARER_TOKEN_KEY.equals(event.getKey())
 				|| "enabled".equals(event.getKey())
-				|| "serverUrl".equals(event.getKey())) {
+				|| "websocketUrl".equals(event.getKey())) {
 			restart();
 		}
 	}
@@ -128,6 +143,11 @@ public class LinkPlugin extends Plugin {
 				configManager.getConfiguration(
 						LinkConfig.CONFIG_GROUP, LinkConfig.BEARER_TOKEN_KEY);
 		return token != null ? token : "";
+	}
+
+	private boolean hasToken() {
+		String token = getStoredToken();
+		return !token.isEmpty();
 	}
 
 	private void restart() {
