@@ -40,6 +40,7 @@ public class LinkPlugin extends Plugin {
 
 	private WebSocketManager webSocketManager;
 	private RsnDetector rsnDetector;
+	private boolean clearingPairingCode;
 
 	@Override
 	protected void startUp() {
@@ -68,10 +69,10 @@ public class LinkPlugin extends Plugin {
 				hasToken(),
 				hasPairingCode());
 
+		if (config.enabled() && (hasToken() || hasPairingCode())) {
+			webSocketManager.connect();
+		}
 		if (client.getGameState() == GameState.LOGGED_IN) {
-			if (config.enabled() && (hasToken() || hasPairingCode())) {
-				webSocketManager.connect();
-			}
 			rsnDetector.onLoggedIn();
 		}
 	}
@@ -171,6 +172,9 @@ public class LinkPlugin extends Plugin {
 
 	private void handlePairingKeyChange(String pairingKey) {
 		if (pairingKey == null || pairingKey.isEmpty()) {
+			if (clearingPairingCode) {
+				return;
+			}
 			configManager.unsetConfiguration(LinkConfig.CONFIG_GROUP, LinkConfig.BEARER_TOKEN_KEY);
 			sendChatMessage("Party Link: Unpaired.");
 			return;
@@ -190,7 +194,9 @@ public class LinkPlugin extends Plugin {
 	}
 
 	private void clearPairingCode() {
+		clearingPairingCode = true;
 		configManager.unsetConfiguration(LinkConfig.CONFIG_GROUP, "pairingKey");
+		clearingPairingCode = false;
 	}
 
 	private void sendChatMessage(String message) {
