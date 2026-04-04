@@ -22,17 +22,16 @@ Party Link bridges that gap. It connects your RuneLite client to an external ser
 ```
 
 1. A player **pairs** their game client with a server using a one-time code
-2. The server issues the player a **bearer token** for future requests
-3. The plugin **polls** the server for pending commands and executes them in-game
-4. Each command is **acknowledged** after execution, so the server knows it landed
+2. The server issues the player a **bearer token** for future connections
+3. The plugin maintains a persistent **WebSocket connection** to the server
+4. The server **pushes commands** to the plugin in real time — no polling
+5. Each command is **acknowledged** after execution, so the server knows it landed
 
 The plugin is server-agnostic — point it at any server that implements the RPC protocol and it works.
 
 ## The RPC Protocol
 
-Remote Party Control (RPC) is the protocol that defines how the plugin and server communicate. It covers authentication, command delivery, and acknowledgment.
-
-The current implementation uses HTTP polling. A future version will move to WebSockets for real-time delivery and lower overhead — the protocol is designed with that transition in mind.
+Remote Party Control (RPC) is the WebSocket-based protocol that defines how the plugin and server communicate. It covers authentication, identity, command delivery, and acknowledgment.
 
 Full specification: **[docs/protocol.md](docs/protocol.md)**
 

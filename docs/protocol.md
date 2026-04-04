@@ -4,153 +4,239 @@ This document specifies the RPC protocol used between the Party Link RuneLite pl
 
 ## Overview
 
-RPC is a simple request-response protocol for delivering party management commands to a game client. The plugin authenticates with a server, polls for pending commands, executes them, and acknowledges each one.
+RPC is a WebSocket-based protocol for delivering party management commands to a game client. The plugin establishes a persistent connection, authenticates, identifies itself, and then receives and executes commands in real time.
 
-### Current: HTTP Polling
+```
+Plugin                            Server
+  │                                  │
+  │  WebSocket connect               │
+  │─────────────────────────────────►│
+  │                                  │
+  │  PAIR or AUTH                    │
+  │─────────────────────────────────►│
+  │                                  │
+  │  PAIR_OK / PAIR_ERROR            │
+  │  AUTH_OK / AUTH_ERROR            │
+  │◄─────────────────────────────────│
+  │                                  │
+  │  IDENTIFY (once authenticated)   │
+  │─────────────────────────────────►│
+  │                                  │
+  │  COMMAND                         │
+  │◄─────────────────────────────────│
+  │                                  │
+  │  ACK                             │
+  │─────────────────────────────────►│
+```
 
-The plugin polls `GET /api/plugin/commands` on a fixed interval (default 5 seconds) and processes any commands returned. On consecutive failures, the interval backs off exponentially up to 60 seconds, resetting on the next successful poll.
+All messages are JSON objects with a `type` field that identifies the message kind.
 
-### Future: WebSocket
+## Connection
 
-The polling approach works but has trade-offs:
+The plugin connects to a configurable WebSocket URL (default: `wss://osrs-party-finder-relay.fly.dev`). The URL must begin with `wss://` or `ws://`.
 
-- **Latency** — commands wait up to one full poll interval before delivery
-- **Overhead** — most polls return an empty response, wasting bandwidth on both sides
-- **Scalability** — each connected client generates steady request volume regardless of activity
-
-A future version will replace polling with a persistent WebSocket connection. The server pushes commands as they occur, and the plugin acknowledges them over the same connection. The command format and semantics remain the same — only the transport changes.
+On `onOpen`, the plugin immediately sends either a `PAIR` or `AUTH` message depending on whether a pairing code or a stored token is available.
 
 ## Authentication
 
-### Pairing Flow
+### Initial Pairing
 
-Pairing links a game client to a user account on the server. It happens once.
-
-```
-Plugin                          Server
-  │                               │
-  │  POST /api/plugin/pair        │
-  │  { "code": "<pairing-code>" } │
-  │──────────────────────────────►│
-  │                               │
-  │  200 { "token": "<bearer>" }  │
-  │◄──────────────────────────────│
-```
-
-1. The user generates a one-time pairing code on the server (via web UI, bot, etc.)
-2. The user pastes the code into the plugin's config panel in RuneLite
-3. The plugin sends the code to `POST /api/plugin/pair`
-4. The server validates the code and returns a bearer token
-5. The plugin stores the token and uses it for all future requests
-
-Clearing the pairing code in the plugin config unpairs the client (the token is discarded locally).
-
-### Request Authentication
-
-All requests after pairing include the bearer token:
+Pairing links a game client to a user account on the server. It happens once per device. The user generates a one-time pairing code on the server (via web UI, bot, etc.) and pastes it into the plugin config.
 
 ```
-Authorization: Bearer <token>
+Plugin                            Server
+  │                                  │
+  │  PAIR {"code":"ABCD-1234"}       │
+  │─────────────────────────────────►│
+  │                                  │
+  │  PAIR_OK {"token":"..."}         │
+  │◄─────────────────────────────────│
 ```
 
-The plugin also sends the player's in-game name when available:
+The returned token is persisted and used for all future connections. The pairing code is discarded after use.
+
+If the code is invalid or expired:
 
 ```
-X-Player-Name: <rsn>
+Server → Plugin: PAIR_ERROR {"type":"PAIR_ERROR","reason":"Invalid code"}
 ```
 
-## Endpoints
+The plugin does **not** reconnect after `PAIR_ERROR`.
 
-### `POST /api/plugin/pair`
+### Subsequent Connections
+
+On reconnects, the plugin authenticates with its stored token:
+
+```
+Plugin                            Server
+  │                                  │
+  │  AUTH {"token":"..."}            │
+  │─────────────────────────────────►│
+  │                                  │
+  │  AUTH_OK                         │
+  │◄─────────────────────────────────│
+```
+
+If the token is invalid:
+
+```
+Server → Plugin: AUTH_ERROR {"type":"AUTH_ERROR","reason":"Invalid token"}
+```
+
+The plugin does **not** reconnect after `AUTH_ERROR`.
+
+## Message Reference
+
+### Client → Server
+
+#### `PAIR`
 
 Exchange a one-time pairing code for a bearer token.
 
-**Request:**
 ```json
 {
-  "code": "abc123"
+  "type": "PAIR",
+  "code": "ABCD-1234"
 }
 ```
 
-**Response (200):**
+#### `AUTH`
+
+Authenticate using a previously issued bearer token.
+
 ```json
 {
+  "type": "AUTH",
   "token": "eyJhbGciOi..."
 }
 ```
 
-**Errors:**
-- `401` — invalid or expired pairing code
+#### `IDENTIFY`
 
----
+Send the player's current RuneScape screen name to the server. Sent immediately after successful authentication, and queued if authentication hasn't completed yet.
 
-### `GET /api/plugin/commands`
-
-Fetch pending commands for the authenticated client.
-
-**Headers:**
-```
-Authorization: Bearer <token>
-X-Player-Name: <rsn>
-```
-
-**Response (200):**
 ```json
 {
-  "commands": [
-    {
-      "id": "cmd_01",
-      "type": "JOIN_PARTY",
-      "passphrase": "party-abc-123"
-    },
-    {
-      "id": "cmd_02",
-      "type": "LEAVE_PARTY",
-      "reason": "KICKED"
-    }
-  ]
+  "type": "IDENTIFY",
+  "rsn": "Zezima"
 }
 ```
 
-An empty `commands` array (or `{}`) means no pending commands.
+#### `PARTY_STATE`
 
----
+Notify the server of a party membership change. Sent whenever the plugin detects the player has joined or left a party.
 
-### `POST /api/plugin/commands/{id}/ack`
-
-Acknowledge that a command has been executed.
-
-**Headers:**
-```
-Authorization: Bearer <token>
-X-Player-Name: <rsn>
-```
-
-**Request body:** `{}` (empty JSON object)
-
-**Response:** `200` on success.
-
-The server should treat an acknowledged command as delivered and not return it on future polls.
-
----
-
-### `POST /api/plugin/rsn`
-
-Register the player's current in-game name with the server. Sent automatically when the plugin detects the player has logged in.
-
-**Headers:**
-```
-Authorization: Bearer <token>
-```
-
-**Request body:**
+Joined:
 ```json
 {
-  "playerName": "Zezima"
+  "type": "PARTY_STATE",
+  "state": "JOINED",
+  "passphrase": "coral-lime-oak-river"
 }
 ```
 
-**Response:** `200` on success.
+Left:
+```json
+{
+  "type": "PARTY_STATE",
+  "state": "LEFT"
+}
+```
+
+#### `ACK`
+
+Acknowledge a received command. Sent immediately after the command has been executed.
+
+```json
+{
+  "type": "ACK",
+  "commandId": "cmd-1"
+}
+```
+
+---
+
+### Server → Client
+
+#### `PAIR_OK`
+
+Pairing succeeded. Contains the bearer token to store for future connections.
+
+```json
+{
+  "type": "PAIR_OK",
+  "token": "eyJhbGciOi..."
+}
+```
+
+#### `PAIR_ERROR`
+
+Pairing failed. The plugin will not reconnect.
+
+```json
+{
+  "type": "PAIR_ERROR",
+  "reason": "Invalid code"
+}
+```
+
+#### `AUTH_OK`
+
+Token authentication succeeded.
+
+```json
+{
+  "type": "AUTH_OK"
+}
+```
+
+#### `AUTH_ERROR`
+
+Token authentication failed. The plugin will not reconnect.
+
+```json
+{
+  "type": "AUTH_ERROR",
+  "reason": "Invalid token"
+}
+```
+
+#### `COMMAND`
+
+Deliver a party management command to the client. The plugin executes it and responds with `ACK`.
+
+```json
+{
+  "type": "COMMAND",
+  "id": "cmd-1",
+  "command": "JOIN_PARTY",
+  "passphrase": "coral-lime-oak-river",
+  "partyId": "p1",
+  "reason": null
+}
+```
+
+```json
+{
+  "type": "COMMAND",
+  "id": "cmd-2",
+  "command": "LEAVE_PARTY",
+  "passphrase": null,
+  "partyId": "p1",
+  "reason": "KICKED"
+}
+```
+
+#### `ERROR`
+
+Informational server error. The plugin logs it and continues.
+
+```json
+{
+  "type": "ERROR",
+  "message": "something went wrong"
+}
+```
 
 ## Command Types
 
@@ -158,21 +244,23 @@ Authorization: Bearer <token>
 
 Instructs the client to join a RuneLite party.
 
-| Field        | Type   | Required | Description                          |
-|--------------|--------|----------|--------------------------------------|
-| `id`         | string | yes      | Unique command identifier            |
-| `type`       | string | yes      | `"JOIN_PARTY"`                       |
+| Field        | Type   | Required | Description                           |
+|--------------|--------|----------|---------------------------------------|
+| `id`         | string | yes      | Unique command identifier             |
+| `command`    | string | yes      | `"JOIN_PARTY"`                        |
 | `passphrase` | string | yes      | The RuneLite party passphrase to join |
+| `partyId`    | string | no       | Server-side party identifier          |
 
 ### `LEAVE_PARTY`
 
 Instructs the client to leave their current RuneLite party.
 
-| Field    | Type   | Required | Description                          |
-|----------|--------|----------|--------------------------------------|
-| `id`     | string | yes      | Unique command identifier            |
-| `type`   | string | yes      | `"LEAVE_PARTY"`                      |
-| `reason` | string | no       | Why the player is leaving            |
+| Field     | Type   | Required | Description                          |
+|-----------|--------|----------|--------------------------------------|
+| `id`      | string | yes      | Unique command identifier            |
+| `command` | string | yes      | `"LEAVE_PARTY"`                      |
+| `partyId` | string | no       | Server-side party identifier         |
+| `reason`  | string | no       | Why the player is leaving            |
 
 **Leave reasons:**
 
@@ -182,21 +270,43 @@ Instructs the client to leave their current RuneLite party.
 | `CLOSED` | The party was disbanded              |
 | `LEFT`   | The player left voluntarily          |
 
+## Connection Lifecycle
+
+### Reconnection
+
+The plugin reconnects automatically on network failure or server-initiated close, using exponential backoff:
+
+- Starting interval: **5 seconds**
+- Each failure doubles the interval, up to a cap of **60 seconds**
+- A successful `AUTH_OK` resets the interval back to 5 seconds
+
+The plugin does **not** reconnect after `AUTH_ERROR` or `PAIR_ERROR` — these indicate a configuration problem, not a transient network issue.
+
+### Disconnection
+
+Clearing the pairing token in the plugin config disconnects the client and disables reconnection until a new pairing is completed.
+
 ## Error Handling
 
-- **Non-2xx responses** on poll cause the plugin to back off exponentially (5s → 10s → 20s → ... → 60s max)
-- **Successful polls** reset the interval to 5 seconds
-- **ACK failures** are logged but do not affect the poll cycle — the server may redeliver unacknowledged commands
-- **Command IDs** must match `^[a-zA-Z0-9_-]+$` — the plugin rejects IDs that don't match this pattern
+| Scenario | Plugin behavior |
+|---|---|
+| `AUTH_ERROR` | Closes connection, no reconnect |
+| `PAIR_ERROR` | Closes connection, no reconnect |
+| Network failure | Reconnects with exponential backoff |
+| Server-initiated close | Reconnects with exponential backoff |
+| `ERROR` message | Logs warning, continues |
+| ACK failure | Logs warning; server may redeliver unacknowledged commands |
 
 ## Implementing a Server
 
-A minimal compliant server needs to:
+A minimal compliant server must:
 
 1. Generate and validate one-time pairing codes
 2. Issue and verify bearer tokens
-3. Queue commands per client and return them on `GET /commands`
-4. Remove commands from the queue when acknowledged
-5. Accept RSN registration via `POST /rsn`
+3. Accept `PAIR` and `AUTH` messages on WebSocket open
+4. Push `COMMAND` messages to connected clients
+5. Handle `ACK` messages and stop redelivering acknowledged commands
+6. Accept `IDENTIFY` messages and track which RSN belongs to which connection
+7. Accept `PARTY_STATE` messages if party tracking is needed
 
 The server owns all party logic — who joins what, when to kick, how parties are organized. The plugin is a thin executor that does what it's told.
