@@ -61,8 +61,12 @@ public class LinkPlugin extends Plugin {
 						commandExecutor,
 						executorService);
 		rsnDetector = new RsnDetector(webSocketManager::sendIdentify, this::getPlayerName);
-		log.info("Link plugin started: gameState={}, enabled={}, hasToken={}, hasPairingCode={}",
-				client.getGameState(), config.enabled(), hasToken(), hasPairingCode());
+		log.info(
+				"Link plugin started: gameState={}, enabled={}, hasToken={}, hasPairingCode={}",
+				client.getGameState(),
+				config.enabled(),
+				hasToken(),
+				hasPairingCode());
 
 		if (client.getGameState() == GameState.LOGGED_IN) {
 			if (config.enabled() && (hasToken() || hasPairingCode())) {

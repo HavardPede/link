@@ -14,6 +14,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 import okhttp3.OkHttpClient;
 import okhttp3.WebSocket;
 import org.junit.Before;
@@ -23,6 +24,7 @@ public class WebSocketManagerTest {
 	private RecordingWebSocket recordingWs;
 	private List<String> changePartyCalls;
 	private List<String> chatMessageCalls;
+	private List<String> pairResults;
 	private FakeScheduledExecutor fakeExecutor;
 	private WebSocketManager manager;
 
@@ -31,17 +33,23 @@ public class WebSocketManagerTest {
 		recordingWs = new RecordingWebSocket();
 		changePartyCalls = new ArrayList<>();
 		chatMessageCalls = new ArrayList<>();
+		pairResults = new ArrayList<>();
 		fakeExecutor = new FakeScheduledExecutor();
 
+		manager = buildManager("", pairResults::add);
+	}
+
+	private WebSocketManager buildManager(String pairingCode, Consumer<String> onPairResult) {
 		CommandExecutor commandExecutor =
 				new CommandExecutor(changePartyCalls::add, chatMessageCalls::add);
-		manager =
-				new WebSocketManager(
-						new OkHttpClient(),
-						"ws://localhost:8080",
-						() -> "test-token",
-						commandExecutor,
-						fakeExecutor);
+		return new WebSocketManager(
+				new OkHttpClient(),
+				"ws://localhost:8080",
+				() -> "test-token",
+				() -> pairingCode,
+				onPairResult,
+				commandExecutor,
+				fakeExecutor);
 	}
 
 	@Test
@@ -214,6 +222,8 @@ public class WebSocketManagerTest {
 				new OkHttpClient(),
 				"http://invalid",
 				() -> "token",
+				() -> "",
+				token -> {},
 				new CommandExecutor(s -> {}, s -> {}),
 				fakeExecutor);
 	}
@@ -224,8 +234,70 @@ public class WebSocketManagerTest {
 				new OkHttpClient(),
 				"",
 				() -> "token",
+				() -> "",
+				token -> {},
 				new CommandExecutor(s -> {}, s -> {}),
 				fakeExecutor);
+	}
+
+	@Test
+	public void onOpenSendsPairMessageWhenPairingCodeSet() {
+		WebSocketManager pairingManager = buildManager("ABCD-1234", pairResults::add);
+
+		pairingManager.onOpen(recordingWs, null);
+
+		assertEquals(1, recordingWs.sentMessages.size());
+		JsonObject msg = parse(recordingWs.sentMessages.get(0));
+		assertEquals("PAIR", msg.get("type").getAsString());
+		assertEquals("ABCD-1234", msg.get("code").getAsString());
+	}
+
+	@Test
+	public void pairOkInvokesCallbackAndAuthenticates() {
+		WebSocketManager pairingManager = buildManager("ABCD-1234", pairResults::add);
+
+		pairingManager.onOpen(recordingWs, null);
+		pairingManager.onMessage(recordingWs, "{\"type\":\"PAIR_OK\",\"token\":\"my-token\"}");
+
+		assertEquals(1, pairResults.size());
+		assertEquals("my-token", pairResults.get(0));
+	}
+
+	@Test
+	public void pairOkSendsQueuedIdentify() {
+		WebSocketManager pairingManager = buildManager("ABCD-1234", pairResults::add);
+		pairingManager.sendIdentify("Zezima");
+
+		pairingManager.onOpen(recordingWs, null);
+		pairingManager.onMessage(recordingWs, "{\"type\":\"PAIR_OK\",\"token\":\"my-token\"}");
+
+		assertEquals(2, recordingWs.sentMessages.size());
+		JsonObject identify = parse(recordingWs.sentMessages.get(1));
+		assertEquals("IDENTIFY", identify.get("type").getAsString());
+		assertEquals("Zezima", identify.get("rsn").getAsString());
+	}
+
+	@Test
+	public void pairErrorInvokesCallbackWithNull() {
+		WebSocketManager pairingManager = buildManager("ABCD-1234", pairResults::add);
+
+		pairingManager.onOpen(recordingWs, null);
+		pairingManager.onMessage(
+				recordingWs, "{\"type\":\"PAIR_ERROR\",\"reason\":\"Invalid code\"}");
+
+		assertEquals(1, pairResults.size());
+		assertEquals(null, pairResults.get(0));
+	}
+
+	@Test
+	public void pairErrorDoesNotReconnect() {
+		WebSocketManager pairingManager = buildManager("ABCD-1234", pairResults::add);
+
+		pairingManager.onOpen(recordingWs, null);
+		pairingManager.onMessage(
+				recordingWs, "{\"type\":\"PAIR_ERROR\",\"reason\":\"Invalid code\"}");
+
+		assertEquals(0, fakeExecutor.scheduledTasks.size());
 	}
 
 	private void simulateAuthFlow() {
