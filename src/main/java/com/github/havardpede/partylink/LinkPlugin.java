@@ -2,6 +2,7 @@ package com.github.havardpede.partylink;
 
 import com.google.inject.Provides;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.ChatMessageType;
@@ -40,7 +41,6 @@ public class LinkPlugin extends Plugin {
 
 	private WebSocketManager webSocketManager;
 	private RsnDetector rsnDetector;
-	private boolean clearingPairingCode;
 
 	@Override
 	protected void startUp() {
@@ -50,11 +50,13 @@ public class LinkPlugin extends Plugin {
 			return;
 		}
 
+		OkHttpClient wsClient =
+				okHttpClient.newBuilder().pingInterval(30, TimeUnit.SECONDS).build();
 		CommandExecutor commandExecutor =
 				new CommandExecutor(this::changeParty, this::sendChatMessage);
 		webSocketManager =
 				new WebSocketManager(
-						okHttpClient,
+						wsClient,
 						wsUrl,
 						this::getStoredToken,
 						this::getPairingCode,
@@ -69,10 +71,10 @@ public class LinkPlugin extends Plugin {
 				hasToken(),
 				hasPairingCode());
 
-		if (config.enabled() && (hasToken() || hasPairingCode())) {
-			webSocketManager.connect();
-		}
 		if (client.getGameState() == GameState.LOGGED_IN) {
+			if (config.enabled() && (hasToken() || hasPairingCode())) {
+				webSocketManager.connect();
+			}
 			rsnDetector.onLoggedIn();
 		}
 	}
@@ -123,12 +125,19 @@ public class LinkPlugin extends Plugin {
 		if (!LinkConfig.CONFIG_GROUP.equals(event.getGroup())) {
 			return;
 		}
-		if ("pairingKey".equals(event.getKey())) {
-			handlePairingKeyChange(event.getNewValue());
-		} else if (LinkConfig.BEARER_TOKEN_KEY.equals(event.getKey())
-				|| "enabled".equals(event.getKey())
-				|| "websocketUrl".equals(event.getKey())) {
-			restart();
+		switch (event.getKey()) {
+			case "pairingKey":
+				handlePairingKeyChange(event.getNewValue());
+				break;
+			case "enabled":
+			case "websocketUrl":
+				restart();
+				break;
+			case LinkConfig.BEARER_TOKEN_KEY:
+				if (!hasToken() && webSocketManager != null) {
+					webSocketManager.disconnect();
+				}
+				break;
 		}
 	}
 
@@ -172,10 +181,12 @@ public class LinkPlugin extends Plugin {
 
 	private void handlePairingKeyChange(String pairingKey) {
 		if (pairingKey == null || pairingKey.isEmpty()) {
-			if (clearingPairingCode) {
+			if (hasToken()) {
 				return;
 			}
-			configManager.unsetConfiguration(LinkConfig.CONFIG_GROUP, LinkConfig.BEARER_TOKEN_KEY);
+			if (webSocketManager != null) {
+				webSocketManager.disconnect();
+			}
 			sendChatMessage("Party Link: Unpaired.");
 			return;
 		}
@@ -183,20 +194,16 @@ public class LinkPlugin extends Plugin {
 	}
 
 	private void onPairResult(String token) {
-		clearPairingCode();
+		if (token != null) {
+			configManager.setConfiguration(
+					LinkConfig.CONFIG_GROUP, LinkConfig.BEARER_TOKEN_KEY, token);
+		}
+		configManager.unsetConfiguration(LinkConfig.CONFIG_GROUP, "pairingKey");
 		if (token == null) {
 			sendChatMessage("Party Link: Pairing failed. Check your code and try again.");
 		} else {
-			configManager.setConfiguration(
-					LinkConfig.CONFIG_GROUP, LinkConfig.BEARER_TOKEN_KEY, token);
 			sendChatMessage("Party Link: Paired successfully!");
 		}
-	}
-
-	private void clearPairingCode() {
-		clearingPairingCode = true;
-		configManager.unsetConfiguration(LinkConfig.CONFIG_GROUP, "pairingKey");
-		clearingPairingCode = false;
 	}
 
 	private void sendChatMessage(String message) {

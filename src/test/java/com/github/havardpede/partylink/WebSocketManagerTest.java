@@ -127,6 +127,7 @@ public class WebSocketManagerTest {
 
 	@Test
 	public void failureSchedulesReconnect() {
+		manager.onOpen(recordingWs, null);
 		manager.onFailure(recordingWs, new RuntimeException("connection lost"), null);
 
 		assertEquals(1, fakeExecutor.scheduledTasks.size());
@@ -136,10 +137,12 @@ public class WebSocketManagerTest {
 
 	@Test
 	public void backoffDoublesOnConsecutiveFailures() {
+		manager.onOpen(recordingWs, null);
 		manager.onFailure(recordingWs, new RuntimeException("fail 1"), null);
 		assertEquals(1, fakeExecutor.scheduledDelays.size());
 		assertEquals(5L, (long) fakeExecutor.scheduledDelays.get(0));
 
+		manager.onOpen(recordingWs, null);
 		manager.onFailure(recordingWs, new RuntimeException("fail 2"), null);
 		assertEquals(2, fakeExecutor.scheduledDelays.size());
 		assertEquals(10L, (long) fakeExecutor.scheduledDelays.get(1));
@@ -148,6 +151,7 @@ public class WebSocketManagerTest {
 	@Test
 	public void backoffCapsAtMax() {
 		for (int i = 0; i < 10; i++) {
+			manager.onOpen(recordingWs, null);
 			manager.onFailure(recordingWs, new RuntimeException("fail"), null);
 		}
 
@@ -157,7 +161,9 @@ public class WebSocketManagerTest {
 
 	@Test
 	public void authOkResetsBackoff() {
+		manager.onOpen(recordingWs, null);
 		manager.onFailure(recordingWs, new RuntimeException("fail"), null);
+		manager.onOpen(recordingWs, null);
 		manager.onFailure(recordingWs, new RuntimeException("fail"), null);
 
 		simulateAuthFlow();

@@ -52,9 +52,11 @@ class WebSocketManager extends WebSocketListener {
 	}
 
 	void connect() {
+		if (webSocket != null) {
+			return;
+		}
 		shouldReconnect = true;
 		cancelReconnect();
-		closeExisting();
 		Request request = new Request.Builder().url(wsUrl).build();
 		webSocket = httpClient.newWebSocket(request, this);
 		log.info("WebSocket connecting to {}", wsUrl);
@@ -148,6 +150,7 @@ class WebSocketManager extends WebSocketListener {
 		if (ws != webSocket) {
 			return;
 		}
+		webSocket = null;
 		authenticated = false;
 		scheduleReconnect();
 	}
@@ -158,6 +161,7 @@ class WebSocketManager extends WebSocketListener {
 		if (ws != webSocket) {
 			return;
 		}
+		webSocket = null;
 		authenticated = false;
 		scheduleReconnect();
 	}
