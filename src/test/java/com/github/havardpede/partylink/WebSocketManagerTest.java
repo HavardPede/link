@@ -242,6 +242,35 @@ public class WebSocketManagerTest {
 	}
 
 	@Test
+	public void failedCommandDoesNotSendAck() {
+		CommandExecutor failingExecutor =
+				new CommandExecutor(
+						passphrase -> {
+							throw new RuntimeException("PartyService error");
+						},
+						chatMessageCalls::add);
+		WebSocketManager failingManager =
+				new WebSocketManager(
+						new OkHttpClient(),
+						"ws://localhost:8080",
+						() -> "test-token",
+						() -> "",
+						pairResults::add,
+						failingExecutor,
+						fakeExecutor);
+		failingManager.onOpen(recordingWs, null);
+		failingManager.onMessage(recordingWs, "{\"type\":\"AUTH_OK\"}");
+		int messagesBeforeCommand = recordingWs.sentMessages.size();
+
+		String commandJson =
+				"{\"type\":\"COMMAND\",\"id\":\"cmd-1\",\"command\":\"JOIN_PARTY\","
+						+ "\"passphrase\":\"coral-lime-oak-river\",\"partyId\":\"p1\",\"reason\":null}";
+		failingManager.onMessage(recordingWs, commandJson);
+
+		assertEquals(messagesBeforeCommand, recordingWs.sentMessages.size());
+	}
+
+	@Test
 	public void errorMessageIsLogged() {
 		simulateAuthFlow();
 

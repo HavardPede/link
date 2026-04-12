@@ -48,13 +48,11 @@ public class CommandExecutorTest {
 		assertNull(changePartyCalls.get(0));
 	}
 
-	@Test
-	public void exceptionInChangePartyDoesNotPropagate() {
+	@Test(expected = RuntimeException.class)
+	public void exceptionInChangePartyPropagates() {
 		shouldThrowOnChangeParty = true;
 
 		executor.execute(commandFromJson("JOIN_PARTY", "test-pass", null, null));
-
-		assertEquals(0, changePartyCalls.size());
 	}
 
 	@Test

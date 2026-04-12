@@ -19,40 +19,32 @@ class CommandExecutor {
 			return;
 		}
 
-		try {
-			switch (command.type) {
-				case JOIN_PARTY:
-					log.info("Executing JOIN_PARTY (command={}, role={})", command.id, command.role);
-					changeParty.accept(command.passphrase);
-					if (command.role != null) {
-						sendChatMessage.accept("You have joined the party. Your role is " + command.role + ".");
-					} else {
-						sendChatMessage.accept("You have joined the party.");
-					}
-					break;
-				case LEAVE_PARTY:
-					log.info(
-							"Executing LEAVE_PARTY (command={}, reason={})",
-							command.id,
-							command.reason);
-					if (command.reason == LeaveReason.KICKED) {
-						sendChatMessage.accept("You have been kicked from the party.");
-					} else if (command.reason == LeaveReason.CLOSED) {
-						sendChatMessage.accept("The party has been closed by the leader.");
-					}
-					changeParty.accept(null);
-					break;
-				case ROLE_CHANGE:
-					log.info("Executing ROLE_CHANGE (command={}, role={})", command.id, command.role);
-					sendChatMessage.accept("Your role has been changed to " + command.role + ".");
-					break;
-			}
-		} catch (RuntimeException e) {
-			log.error(
-					"Failed to execute command {} (type={}): {}",
-					command.id,
-					command.type,
-					e.getMessage());
+		switch (command.type) {
+			case JOIN_PARTY:
+				log.info("Executing JOIN_PARTY (command={}, role={})", command.id, command.role);
+				changeParty.accept(command.passphrase);
+				if (command.role != null) {
+					sendChatMessage.accept("You have joined the party. Your role is " + command.role + ".");
+				} else {
+					sendChatMessage.accept("You have joined the party.");
+				}
+				break;
+			case LEAVE_PARTY:
+				log.info(
+						"Executing LEAVE_PARTY (command={}, reason={})",
+						command.id,
+						command.reason);
+				changeParty.accept(null);
+				if (command.reason == LeaveReason.KICKED) {
+					sendChatMessage.accept("You have been kicked from the party.");
+				} else if (command.reason == LeaveReason.CLOSED) {
+					sendChatMessage.accept("The party has been closed by the leader.");
+				}
+				break;
+			case ROLE_CHANGE:
+				log.info("Executing ROLE_CHANGE (command={}, role={})", command.id, command.role);
+				sendChatMessage.accept("Your role has been changed to " + command.role + ".");
+				break;
 		}
 	}
 }
