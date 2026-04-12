@@ -26,9 +26,8 @@ import okhttp3.OkHttpClient;
 @PluginDescriptor(
 		name = "Party Link",
 		description =
-				"Connects RuneLite to the Party Link website for remote party management. "
-						+ "Pair with your account to sync parties and receive commands from the web. "
-						+ "This plugin requires a Party Link account to function.")
+				"Connects RuneLite to an external server for remote party management. "
+						+ "Pair with your server to sync parties and receive commands in real time.")
 public class LinkPlugin extends Plugin {
 	@Inject private Client client;
 	@Inject private PartyService partyService;

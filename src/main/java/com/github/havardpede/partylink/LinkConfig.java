@@ -24,7 +24,7 @@ public interface LinkConfig extends Config {
 			position = 0,
 			section = connectionSection)
 	default String websocketUrl() {
-		return "wss://osrs-party-finder-relay.fly.dev";
+		return "";
 	}
 
 	@ConfigItem(
@@ -44,8 +44,8 @@ public interface LinkConfig extends Config {
 			keyName = "enabled",
 			name = "Enable Sync",
 			description =
-					"Enable automatic party sync. When enabled, the plugin polls the server "
-							+ "for commands and executes them in your game client.",
+					"Enable automatic party sync. When enabled, the plugin maintains a live "
+							+ "connection to the server and executes party commands in real time.",
 			position = 2,
 			section = connectionSection)
 	default boolean enabled() {
