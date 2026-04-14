@@ -238,7 +238,7 @@ Informational server error. The plugin logs it and continues.
 
 ### `JOIN_PARTY`
 
-Instructs the client to join a RuneLite party.
+Queues a party invitation. The player must type `::join` in the chatbox to accept — auto-joining is not supported because the RuneLite team requires party changes to be player-initiated.
 
 | Field        | Type   | Required | Description                           |
 |--------------|--------|----------|---------------------------------------|

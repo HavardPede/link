@@ -10,11 +10,11 @@ Old School RuneScape has a built-in party system that lets players group up and 
 
 Party Link removes that friction. Once you install the plugin and connect it to a compatible service, that service can:
 
-- Automatically move you into the right party for an event or tournament
+- Invite you to the right party for an event or tournament — you confirm with `::join`
 - Kick or reassign players without anyone needing to do it manually in-game
 - Keep party membership in sync with a web dashboard or Discord bot in real time
 
-You just install the plugin, pair it once, and it works in the background.
+You just install the plugin, pair it once, and it works in the background. Party joins require confirmation (type `::join` when invited); leaves and role changes happen automatically.
 
 ---
 
@@ -25,7 +25,14 @@ You just install the plugin, pair it once, and it works in the background.
 3. Paste the **pairing code** from that service's website or bot
 4. Enable the plugin — it will connect automatically and start receiving commands
 
-That's it. The plugin runs silently in the background and handles party changes as they come in.
+That's it. When a service invites you to a party, you'll see a message in chat — type `::join` to accept.
+
+### Chat commands
+
+| Command    | Description                                                                 |
+|------------|-----------------------------------------------------------------------------|
+| `::join`   | Accepts a pending party invitation. If no invitation is pending, shows a message. |
+| `::leave`  | Leaves the current RuneLite party.                                          |
 
 ---
 
