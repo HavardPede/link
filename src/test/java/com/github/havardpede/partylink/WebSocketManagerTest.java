@@ -2,6 +2,7 @@ package com.github.havardpede.partylink;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertTrue;
 
 import com.google.gson.JsonObject;
@@ -87,7 +88,7 @@ public class WebSocketManagerTest {
 	}
 
 	@Test
-	public void commandMessageExecutesAndSendsAck() {
+	public void joinPartyCommandQueuesInviteWithoutAck() {
 		simulateAuthFlow();
 
 		String commandJson =
@@ -95,12 +96,9 @@ public class WebSocketManagerTest {
 						+ "\"passphrase\":\"coral-lime-oak-river\",\"partyId\":\"p1\",\"reason\":null}";
 		manager.onMessage(recordingWs, commandJson);
 
-		assertEquals(1, changePartyCalls.size());
-		assertEquals("coral-lime-oak-river", changePartyCalls.get(0));
-
-		JsonObject ack = parse(recordingWs.lastSent());
-		assertEquals("ACK", ack.get("type").getAsString());
-		assertEquals("cmd-1", ack.get("commandId").getAsString());
+		assertEquals(0, changePartyCalls.size());
+		JsonObject lastSent = parse(recordingWs.lastSent());
+		assertNotEquals("ACK", lastSent.get("type").getAsString());
 	}
 
 	@Test

@@ -201,8 +201,7 @@ class WebSocketManager extends WebSocketListener {
 	private void handleCommand(String json) {
 		Command command = Command.fromJson(json);
 		try {
-			commandExecutor.execute(command);
-			sendAck(command.id);
+			commandExecutor.execute(command, () -> sendAck(command.id));
 		} catch (RuntimeException e) {
 			log.error(
 					"Failed to execute command {} (type={}): {}",

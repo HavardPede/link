@@ -8,6 +8,7 @@ import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.ChatMessageType;
 import net.runelite.api.Client;
 import net.runelite.api.GameState;
+import net.runelite.api.events.CommandExecuted;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
 import net.runelite.client.callback.ClientThread;
@@ -29,6 +30,9 @@ import okhttp3.OkHttpClient;
 				"Connects RuneLite to an external server for remote party management. "
 						+ "Pair with your server to sync parties and receive commands in real time.")
 public class LinkPlugin extends Plugin {
+	private static final String JOIN_COMMAND = "join";
+	private static final String LEAVE_COMMAND = "leave";
+
 	@Inject private Client client;
 	@Inject private PartyService partyService;
 	@Inject private OkHttpClient okHttpClient;
@@ -40,6 +44,7 @@ public class LinkPlugin extends Plugin {
 
 	private WebSocketManager webSocketManager;
 	private RsnDetector rsnDetector;
+	private CommandExecutor commandExecutor;
 
 	@Override
 	protected void startUp() {
@@ -51,8 +56,7 @@ public class LinkPlugin extends Plugin {
 
 		OkHttpClient wsClient =
 				okHttpClient.newBuilder().pingInterval(30, TimeUnit.SECONDS).build();
-		CommandExecutor commandExecutor =
-				new CommandExecutor(this::changeParty, this::sendChatMessage);
+		commandExecutor = new CommandExecutor(this::changeParty, this::sendChatMessage);
 		webSocketManager =
 				new WebSocketManager(
 						wsClient,
@@ -80,6 +84,7 @@ public class LinkPlugin extends Plugin {
 
 	@Override
 	protected void shutDown() {
+		commandExecutor = null;
 		if (webSocketManager != null) {
 			webSocketManager.disconnect();
 		}
@@ -98,6 +103,15 @@ public class LinkPlugin extends Plugin {
 			case LOGIN_SCREEN:
 				webSocketManager.disconnect();
 				break;
+		}
+	}
+
+	@Subscribe
+	public void onCommandExecuted(CommandExecuted event) {
+		if (JOIN_COMMAND.equalsIgnoreCase(event.getCommand())) {
+			onJoinCommand();
+		} else if (LEAVE_COMMAND.equalsIgnoreCase(event.getCommand())) {
+			changeParty(null);
 		}
 	}
 
@@ -147,6 +161,12 @@ public class LinkPlugin extends Plugin {
 
 	private String getPlayerName() {
 		return client.getLocalPlayer() != null ? client.getLocalPlayer().getName() : null;
+	}
+
+	private void onJoinCommand() {
+		if (commandExecutor == null || !commandExecutor.executePendingJoin()) {
+			sendChatMessage("No pending party invitation.");
+		}
 	}
 
 	private void changeParty(String passphrase) {
